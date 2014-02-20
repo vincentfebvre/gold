@@ -1,0 +1,2 @@
+si $1>$2>$3 et $2>estinversede>$4 alors $3>$4>$2
+

@@ -1,3 +1,4 @@
 russie>plusgrandque>france
 france>plusgrandque>suisse
+pluspetitque>estinversede>plusgrandque
 
