@@ -23,10 +23,11 @@ sub CheckSingle($$$)
 	{
 		return TRUE if ($_->[0] == $a and $_->[1] == $b and $_->[2] == $c);
 	}
-	return UNKNOWN;
+
 
 	# Case 3
 
+	return UNKNOWN;
 }
 
 sub LoadData()
