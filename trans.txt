@@ -1,0 +1,2 @@
+$1>$2>$3,$3>$4>$2,$2>estinversede>$4
+$1>plusgrandque>$2>plusgrandque>$3,$1>plusgrandque>$3,

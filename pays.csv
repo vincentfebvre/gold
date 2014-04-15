@@ -1,0 +1,6 @@
+france,is,pays
+suisse,is,pays
+russie,is,pays
+france,est_plus_grand_que,suisse
+russie,est_plus_grand_que,france
+est_plus_grand_que,est_inverse_de,est_plus_petit_que

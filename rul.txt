@@ -1,2 +1,2 @@
 si $1>$2>$3 et $2>estinversede>$4 alors $3>$4>$2
-
+si $1>plusgrandque>$2 et $2>plusgrandque>$3 alors $1>plusgrandque>$3

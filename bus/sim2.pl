@@ -4,12 +4,14 @@ use Data::Dumper;
 
 # Params
 my %funcs = (
-	Zero => { Assign => \&Assign_Random, NextMove =>\&NextMove_Random },
+	0    => { Assign => \&Assign_Random, NextMove =>\&NextMove_Random },
 	A    => { Assign => \&Assign_LeastAssigned, NextMove =>\&NextMove_Random },
 	B    => { Assign => \&Assign_LeastAssigned, NextMove =>\&NextMove_Closest },
+    C    => { Assign => \&Assign_BestEstimate, NextMove =>\&NextMove_Closest },
+    D    => { Assign => \&Assign_EarliestArrival, NextMove =>\&NextMove_Closest },
 );
 
-my $funcset = "B";
+my $funcset;
 
 my @num = ('0'..'9');
 my @let = ('A'..'J');
@@ -23,12 +25,13 @@ foreach my $i (@num)
 	}
 }
 
+my @pass_orig;
 my @pass;
 my @passdone;
 my $numpass = 0;
-for my $t (0..100)
+for my $t (0..10)
 {
-	my $maxp = 30;
+	my $maxp = 50;
 	my $p = int(rand($maxp));
 	for (0..$p)
 	{
@@ -38,17 +41,33 @@ for my $t (0..100)
 			$to = $let[int(rand(@let))].$num[int(rand(@num))];
 		} while ($from eq $to);
 		$numpass++;
-		push @pass, { name => "P$numpass", from => $from, to => $to, time1 => $t, time2 => undef, time3 => undef, assign => undef, dist=> DistanceBetween($from, $to) };
+		push @pass_orig, { name => "P$numpass", from => $from, to => $to, time1 => $t, time2 => undef, time3 => undef, assign => undef, dist=> DistanceBetween($from, $to) };
 	}
 }
 
 my @veh;
-for (1..10)
-{
-	push @veh, { name => "V$_", cap => 9, pos => 'A0', totdist => 0, carrying => [], assigned => [], nextmove => undef, togo => -1 };
-}
-
 my $time = 0;
+
+sub Restore()
+{
+    $time = 0;
+    @veh = ();
+    for (1..10)
+    {
+        push @veh, { name => "V$_", cap => 55, pos => 'A0', totdist => 0, carrying => [], assigned => [], nextmove => undef, togo => -1, eeos => 0, etotdist => 0 };
+    }
+    @pass = ();
+    @passdone = ();
+    foreach my $p (@pass_orig)
+    {
+        my %n;
+        foreach my $e (keys(%$p))
+        {
+            $n{$e} = $p->{$e};
+        }
+        push @pass, \%n;
+    }
+}
 
 sub DistanceBetween($$)
 {
@@ -89,7 +108,7 @@ sub NextMove_Closest($)
 		foreach (@{$v->{carrying}})
 		{
 			my $d = DistanceBetween($v->{pos}, $_->{to});
-			if (!defined($best{id}) or $best{num} > DistanceBetween($v->{pos}, $d))
+			if (!defined($best{id}) or $best{num} > $d)
 			{
 				$best{id} = $_->{to};
 				$best{num} = $d;
@@ -100,7 +119,7 @@ sub NextMove_Closest($)
 			foreach (@{$v->{assigned}})
 			{
 				my $d = DistanceBetween($v->{pos}, $_->{from});
-				if (!defined($best{id}) or $best{num} > DistanceBetween($v->{pos}, $d))
+				if (!defined($best{id}) or $best{num} > $d)
 				{
 					$best{id} = $_->{from};
 					$best{num} = $d;
@@ -128,6 +147,7 @@ sub Advance()
 		$v->{togo}--;
 		$v->{totdist}++;
 		$v->{eeos}--;
+        $v->{etotdist} -= @{$v->{assigned}} + @{$v->{carrying}};
 	}
 	# Have we reached destination (or were we not moving but at the right position)
 	if ($v->{togo} == 0)
@@ -145,7 +165,7 @@ sub Advance()
                     if ($_->{to} eq $v->{pos})
                     {
                         $_->{time3} = $time + 1;
-                        print "$_->{time3}: pass $_->{name} ($_->{from} -> $_->{to}) GETS OFF $v->{name}\n";
+                        #print "$_->{time3}: pass $_->{name} ($_->{from} -> $_->{to}) GETS OFF $v->{name}\n";
                         push @passdone, $_;
                     }
                     else
@@ -162,7 +182,7 @@ sub Advance()
                     if ($_->{from} eq $v->{pos} and @{$v->{carrying}} < $v->{cap})
                     {
                         $_->{time2} = $time + 1;
-                        print "$_->{time2}: pass $_->{name} ($_->{from} -> $_->{to}) GETS ON $v->{name}\n";
+                        #print "$_->{time2}: pass $_->{name} ($_->{from} -> $_->{to}) GETS ON $v->{name}\n";
                         push @{$v->{carrying}}, $_;
                     }
                     else
@@ -179,22 +199,23 @@ sub Advance()
     }
 
 
-	print ($time+1).":";
+	#print ($time+1).":";
 	foreach my $v (@veh)
 	{
-		print " $v->{name}($v->{pos}";
-		print " -> $v->{nextmove} [$v->{togo}]" if defined($v->{nextmove});
-		print " ".scalar(@{$v->{carrying}})."/".$v->{cap}." +".scalar(@{$v->{assigned}}).")";
-		print "*$v->{eeos}*";
+		#print " $v->{name}($v->{pos}";
+		#print " -> $v->{nextmove} [$v->{togo}]" if defined($v->{nextmove});
+		#print " ".scalar(@{$v->{carrying}})."/".$v->{cap}." +".scalar(@{$v->{assigned}}).")";
+		#print "*$v->{eeos},$v->{etotdist}*";
 	}
-	print "\n";
+	#print "\n";
 	$time++;
 }
 
-sub EstimatedEndOfService($)
+sub EstimatedEndOfService($;$$)
 {
-	my ($v) = @_;
+	my ($v, $s, $e) = @_;
 	my ($dist, $last);
+    my $totwait = 0;
 	if (defined($v->{nextmove}))
 	{
 		$dist = $v->{togo};
@@ -203,20 +224,26 @@ sub EstimatedEndOfService($)
 	else
 	{
 		$dist = 0;
-		$last = $v->{pos}
+		$last = $v->{pos};
 	}
 	my @dst;
 	my $nodst = 0;
-	foreach (@{$v->{assigned}})
-	{
-		push @dst, { from => $_->{from}, to => $_->{to}, st => 'a' };
-		$nodst += 2;
-	}
 	foreach (@{$v->{carrying}})
 	{
 		push @dst, { from => $_->{from}, to => $_->{to}, st => 'c' };
 		$nodst++;
 	}
+    foreach (@{$v->{assigned}})
+	{
+		push @dst, { from => $_->{from}, to => $_->{to}, st => 'a' };
+		$nodst += 2;
+	}
+    if (defined($s) and defined($e))
+    {
+		push @dst, { from => $s, to => $e, st => 'a' };
+		$nodst += 2;
+	}
+
 	while ($nodst > 0)
 	{
 		my %best = ( id => undef, num => undef, pos => undef );
@@ -246,6 +273,7 @@ sub EstimatedEndOfService($)
 
 		$dist += $best{num};
 		$nodst--;
+        #print "$best{pos}($best{num})";
 		if ($dst[$best{id}]->{st} eq 'a')
 		{
 			$dst[$best{id}]->{st} = 'c';
@@ -253,6 +281,7 @@ sub EstimatedEndOfService($)
 		elsif ($dst[$best{id}]->{st} eq 'c')
 		{
 			$dst[$best{id}]->{st} = 'd';
+            $totwait += $dist;
 		}
 		elsif ($dst[$best{id}]->{st} ne 'd')
 		{
@@ -260,9 +289,48 @@ sub EstimatedEndOfService($)
 		}
 		$last = $best{pos};
 	}
-	return $dist;
+    #print "[$dist]\n";
+    return ($dist, $totwait);
 }
 
+sub Assign_EarliestArrival($)
+{
+    my ($p) = @_;
+    my %best = (num => undef, id => undef);
+	for my $v (0..scalar(@veh) - 1)
+	{
+        my ($x, $e) = EstimatedEndOfService($veh[$v], $p->{from}, $p->{to});
+        my $n = $e;
+        for my $v2 (0..scalar(@veh) - 1)
+        {
+            $n += $veh[$v2]->{etotdist} if ($v2 != $v);
+        }
+		if (!defined($best{id}) or $best{num} > $n)
+		{
+			$best{id} = $v;
+			$best{num} = $n;
+		}
+	}
+	$p->{assign} = $best{id};
+}
+
+sub Assign_BestEstimate($)
+{
+    my ($p) = @_;
+    my %best = (num => undef, id => undef);
+	for (0..scalar(@veh) - 1)
+	{
+        my $e = EstimatedEndOfService($veh[$_], $p->{from}, $p->{to});
+        my $n = $e - $veh[$_]->{eeos};
+		if (!defined($best{id}) or $best{num} > $n or scalar(@{$veh[$_]->{assigned}}) == 0)
+		{
+			$best{id} = $_;
+			$best{num} = $n;
+            last if scalar(@{$veh[$_]->{assigned}}) == 0;
+		}
+	}
+	$p->{assign} = $best{id};
+}
 sub Assign_Random($)
 {
 	my ($p) = @_;
@@ -318,9 +386,9 @@ sub Main()
 		{
 			my $p = shift(@pass);
 			Assign($p);
-			print "$p->{time1}: pass $p->{name} ($p->{from} -> $p->{to}) ASSIGNED TO ".$veh[$p->{assign}]->{name}."\n";
-			$veh[$p->{assign}]->{eeos} = EstimatedEndOfService($veh[$p->{assign}]);
+			#print "$p->{time1}: pass $p->{name} ($p->{from} -> $p->{to}) ASSIGNED TO ".$veh[$p->{assign}]->{name}."\n";
 			push @{$veh[$p->{assign}]->{assigned}}, $p;
+            ($veh[$p->{assign}]->{eeos}, $veh[$p->{assign}]->{etotdist}) = EstimatedEndOfService($veh[$p->{assign}]);
 		}
 		Advance();
 		if (@pass == 0)
@@ -341,7 +409,15 @@ sub Main()
 	ShowStats();
 }
 
-Main();
+foreach (sort keys(%funcs))
+{
+    Restore();
+    $funcset = $_;
+    print "$_\n";
+    Main();
+}
+
+#Main();
 #print Dumper(@passdone);
 
 
