@@ -2,6 +2,12 @@ use strict;
 use Storable 'dclone';
 use Data::Dumper;
 
+
+my $buspos = 0x1;
+my $passcsv = 0x2;
+
+my $dbg = $passcsv; 
+
 # Params
 my %funcs = (
 	0    => { Assign => \&Assign_Random, NextMove =>\&NextMove_Random },
@@ -9,7 +15,10 @@ my %funcs = (
 	B    => { Assign => \&Assign_LeastAssigned, NextMove =>\&NextMove_Closest },
     C    => { Assign => \&Assign_BestEstimate, NextMove =>\&NextMove_Closest },
     D    => { Assign => \&Assign_EarliestArrival, NextMove =>\&NextMove_Closest },
+#    E    => { Assign => \&Assign_EarliestArrival, NextMove =>\&NextMove_AllStops },
 );
+
+my @do = ("D");
 
 my $funcset;
 
@@ -29,9 +38,9 @@ my @pass_orig;
 my @pass;
 my @passdone;
 my $numpass = 0;
-for my $t (0..10)
+for my $t (0..960)
 {
-	my $maxp = 50;
+	my $maxp = 3;
 	my $p = int(rand($maxp));
 	for (0..$p)
 	{
@@ -39,7 +48,7 @@ for my $t (0..10)
 		$from = $let[int(rand(@let))].$num[int(rand(@num))];
 		do {
 			$to = $let[int(rand(@let))].$num[int(rand(@num))];
-		} while ($from eq $to);
+		} while ($from eq $to or DistanceBetween($from, $to) < 4);
 		$numpass++;
 		push @pass_orig, { name => "P$numpass", from => $from, to => $to, time1 => $t, time2 => undef, time3 => undef, assign => undef, dist=> DistanceBetween($from, $to) };
 	}
@@ -54,7 +63,7 @@ sub Restore()
     @veh = ();
     for (1..10)
     {
-        push @veh, { name => "V$_", cap => 55, pos => 'A0', totdist => 0, carrying => [], assigned => [], nextmove => undef, togo => -1, eeos => 0, etotdist => 0 };
+        push @veh, { name => "V$_", cap => 7, pos => 'A0', totdist => 0, carrying => [], assigned => [], nextmove => undef, togo => -1, eeos => 0, etotdist => 0 };
     }
     @pass = ();
     @passdone = ();
@@ -139,22 +148,28 @@ sub NextMove($)
 
 sub Advance()
 {
+	print "|" if ($dbg & $buspos);
     foreach my $v (@veh)
     {
+
 	# Where we on the move
 	if ($v->{togo} > 0)
 	{
 		$v->{togo}--;
 		$v->{totdist}++;
 		$v->{eeos}--;
-        $v->{etotdist} -= @{$v->{assigned}} + @{$v->{carrying}};
+		$v->{etotdist} -= @{$v->{assigned}} + @{$v->{carrying}};
+		print ">>|" if ($dbg & $buspos and $v->{togo} > 0);
 	}
+
 	# Have we reached destination (or were we not moving but at the right position)
+	print "**|" if ($dbg & $buspos and $v->{togo} == -1);
 	if ($v->{togo} == 0)
 	{
 		$v->{pos} = $v->{nextmove};
 		$v->{nextmove} = undef;
 		$v->{togo} = -1;
+		print $v->{pos}."|" if ($dbg & $buspos);
 	}
 	if ($v->{togo} == 0 or $v->{togo} == -1)
             {
@@ -198,7 +213,7 @@ sub Advance()
 
     }
 
-
+	print "\n" if ($dbg & $buspos);
 	#print ($time+1).":";
 	foreach my $v (@veh)
 	{
@@ -366,8 +381,9 @@ sub ShowStats()
 		$wait += $_->{time2} - $_->{time1};
 		$board += $_->{time3} - $_->{time2};
 		$totdist += $_->{dist};
+		print "$_->{name},$_->{from},$_->{to}
 	}
-	printf "Num pass %d, Avg time %.2f, (Avg wait %.2f, Avg board %.2f) time/dist ratio %.2f\n", scalar(@passdone), ($wait + $board) / scalar(@passdone), $wait / scalar(@passdone), $board / scalar(@passdone), ($wait + $board) / $totdist;
+	printf "Num pass %d (avg dist %.2f), Avg time %.2f, (Avg wait %.2f, Avg board %.2f) time/dist ratio %.2f\n", scalar(@passdone), $totdist / @passdone,($wait + $board) / scalar(@passdone), $wait / scalar(@passdone), $board / scalar(@passdone), ($wait + $board) / $totdist;
 
 	my ($totdistveh) = (0);
 	foreach (@veh)
@@ -380,6 +396,21 @@ sub ShowStats()
 sub Main()
 {
 	my $turn = 0;
+
+	if ($dbg & $buspos)
+	{
+		my $x = 1;
+		print "|";
+		foreach(@veh)
+		{
+			print $_->{name}."|";
+			$x += length($_->{name}) + 1;
+		}
+		print "\n";
+		print $x x "*";
+		print "\n";
+	}
+
 	while (1)
 	{
 		while (@pass > 0 and $pass[0]->{time1} <= $turn)
@@ -391,6 +422,7 @@ sub Main()
             ($veh[$p->{assign}]->{eeos}, $veh[$p->{assign}]->{etotdist}) = EstimatedEndOfService($veh[$p->{assign}]);
 		}
 		Advance();
+
 		if (@pass == 0)
 		{
 			my $stop = 1;
@@ -409,7 +441,7 @@ sub Main()
 	ShowStats();
 }
 
-foreach (sort keys(%funcs))
+foreach (@do)
 {
     Restore();
     $funcset = $_;
